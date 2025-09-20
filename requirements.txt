@@ -1,4 +1,5 @@
-Flask
-Gunicorn
-flask-cors
-pyrebase
+Flask==3.0.3
+flask-cors==4.0.1
+pyrebase4==4.7.1
+requests==2.31.0
+gunicorn==23.2.1
