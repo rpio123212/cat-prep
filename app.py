@@ -1,78 +1,66 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import firebase_admin
-from firebase_admin import credentials, db
+import requests
 import time
 
 app = Flask(__name__)
 CORS(app)
 
-# --- Firebase Admin Config (works with latest Python) ---
-# Instead of pyrebase, we use firebase_admin with service account
-# Get the service account JSON from Firebase Console -> Project Settings -> Service Accounts
-cred = credentials.Certificate("creds.json")  # place JSON file in project root
-firebase_admin.initialize_app(cred, {
-    'databaseURL': "https://cat-data-4daff-default-rtdb.firebaseio.com/"
-})
+# Firebase Realtime Database base URL
+BASE_URL = "https://cat-data-4daff-default-rtdb.firebaseio.com"
 
-# POST 1: Store test results
-@app.route('/add_test', methods=['POST'])
+def push_to_firebase(path, data):
+    url = f"{BASE_URL}/{path}.json"
+    res = requests.post(url, json=data)
+    if res.status_code == 200:
+        return res.json()
+    else:
+        return {"error": res.text}
+
+def get_from_firebase(path):
+    url = f"{BASE_URL}/{path}.json"
+    res = requests.get(url)
+    if res.status_code == 200:
+        return res.json()
+    else:
+        return {"error": res.text}
+
+@app.route("/add_test", methods=["POST"])
 def add_test():
-    data = request.json
-    if not data:
-        return jsonify({"error": "Missing JSON body"}), 400
-
+    data = request.get_json()
     entry = {
         "score": data.get("score"),
         "percentile": data.get("percentile"),
         "remarks": data.get("remarks"),
         "improvements": data.get("improvements"),
         "others": data.get("others"),
-        "rating": data.get("rating", 0),
+        "rating": data.get("rating"),
         "timestamp": int(time.time())
     }
-    ref = db.reference('test-output')
-    ref.push(entry)
-    return jsonify({"message": "Test data added successfully", "data": entry}), 201
+    result = push_to_firebase("test-output", entry)
+    return jsonify({"message": "Test data added", "firebase_result": result, "data": entry})
 
-
-# POST 2: Store daily progress
-@app.route('/add_day', methods=['POST'])
+@app.route("/add_day", methods=["POST"])
 def add_day():
-    data = request.json
-    if not data:
-        return jsonify({"error": "Missing JSON body"}), 400
-
+    data = request.get_json()
     entry = {
-        "activities": data.get("activities"),
-        "rating": data.get("rating", 0),
+        "summary": data.get("summary"),
+        "rating": data.get("rating"),
         "timestamp": int(time.time())
     }
-    ref = db.reference('daily-progress')
-    ref.push(entry)
-    return jsonify({"message": "Daily progress added successfully", "data": entry}), 201
+    result = push_to_firebase("daily-output", entry)
+    return jsonify({"message": "Day data added", "firebase_result": result, "data": entry})
 
-
-# GET 3: Retrieve data
-@app.route('/get_data', methods=['GET'])
+@app.route("/get_data", methods=["GET"])
 def get_data():
-    data_type = request.args.get("type")
-    if not data_type:
-        return jsonify({"error": "Missing query param ?type=exams or ?type=days"}), 400
-
-    if data_type == "exams":
-        ref = db.reference('test-output')
-        data = ref.get() or {}
-        return jsonify({"exams": data})
-
-    elif data_type == "days":
-        ref = db.reference('daily-progress')
-        data = ref.get() or {}
-        return jsonify({"days": data})
-
+    query = request.args.get("type")
+    if query == "tests":
+        data = get_from_firebase("test-output")
+    elif query == "days":
+        data = get_from_firebase("daily-output")
     else:
-        return jsonify({"error": "Invalid type. Use 'exams' or 'days'"}), 400
+        return jsonify({"error": "Invalid query param. Use ?type=tests or ?type=days"}), 400
+    return jsonify(data)
 
-
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5000)
