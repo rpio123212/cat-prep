@@ -15,6 +15,3 @@ def get_data():
         "message": "This is a GET response",
         "status": "success"
     })
-
-if __name__ == '__main__':
-    app.run(debug=True)
